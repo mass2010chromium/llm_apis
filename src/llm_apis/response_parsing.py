@@ -24,7 +24,7 @@ def extract_json_from_response(text: str) -> dict:
     try:
         return json.loads(json_str)
     except json.JSONDecodeError as e:
-        if x.msg == 'Extra data':
+        if e.msg == 'Extra data':
             json_str = json_str[:e.pos]
             return json.loads(json_str)
         raise e
