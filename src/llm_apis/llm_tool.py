@@ -2,6 +2,7 @@ import copy
 import functools
 import re
 import textwrap
+import time
 
 import requests
 
@@ -193,6 +194,11 @@ class OpenRouterTool(LLMTool):
                 data = resp.json()
                 break
             except requests.exceptions.ReadTimeout:
+                continue
+            except Exception as e:
+                print(f"Strange exception in VLM call: {e}")
+                print("Retry anyway! (with some delay)")
+                time.sleep(5)   # In case this helps I guess
                 continue
         if data is None:
             raise RuntimeError(f"VLM Request failed after {self.retries} retries")
