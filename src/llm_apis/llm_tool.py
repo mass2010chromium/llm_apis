@@ -146,12 +146,14 @@ class OpenRouterTool(LLMTool):
                  system_prompt=None,
                  system_prompt_role='system',
                  temperature: float = 0.2,
-                 timeout: int = 180):
+                 timeout: int = 60,
+                 retries: int = 3):
         super().__init__(function, system_prompt, system_prompt_role)
         self.model = model
         self.api_key = api_key
         self.temperature = temperature
         self.timeout = timeout
+        self.retries = retries
 
     def make_query(self, messages):
         for turn in messages:
@@ -180,11 +182,20 @@ class OpenRouterTool(LLMTool):
             "Content-Type": "application/json",
         }
 
-        resp = requests.post(
-            OpenRouterTool.OPENROUTER_URL, headers=headers, json=payload, timeout=self.timeout
-        )
-        resp.raise_for_status()
-        data = resp.json()
+
+        data = None
+        for i in range(self.retries):
+            try:
+                resp = requests.post(
+                    OpenRouterTool.OPENROUTER_URL, headers=headers, json=payload, timeout=self.timeout
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                break
+            except requests.exceptions.ReadTimeout:
+                continue
+        if data is None:
+            raise RuntimeError(f"VLM Request failed after {self.retries} retries")
         choices = data.get("choices")
         if not choices:
             raise RuntimeError(f"Unexpected VLM response: {data}")
