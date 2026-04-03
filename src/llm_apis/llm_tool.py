@@ -2,7 +2,6 @@ import copy
 import functools
 import re
 import textwrap
-import time
 
 import requests
 
@@ -192,7 +191,12 @@ class OpenRouterTool(LLMTool):
                 )
                 resp.raise_for_status()
                 data = resp.json()
-                break
+                choices = data.get("choices")
+                if not choices:
+                    raise RuntimeError(f"Unexpected VLM response: {data}")
+
+                # TODO: only string responses supported
+                return choices[0].get("message", {}).get("content", "").strip()
             except requests.exceptions.ReadTimeout:
                 continue
             except Exception as e:
@@ -200,11 +204,4 @@ class OpenRouterTool(LLMTool):
                 print("Retry anyway! (with some delay)")
                 time.sleep(5)   # In case this helps I guess
                 continue
-        if data is None:
-            raise RuntimeError(f"VLM Request failed after {self.retries} retries")
-        choices = data.get("choices")
-        if not choices:
-            raise RuntimeError(f"Unexpected VLM response: {data}")
-
-        # TODO: only string responses supported
-        return choices[0].get("message", {}).get("content", "").strip()
+        raise RuntimeError(f"VLM Request failed after {self.retries} retries")
