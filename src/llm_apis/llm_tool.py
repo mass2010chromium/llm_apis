@@ -186,6 +186,7 @@ class OpenRouterTool(LLMTool):
 
         data = None
         for i in range(self.retries):
+            choices = []
             try:
                 resp = requests.post(
                     OpenRouterTool.OPENROUTER_URL, headers=headers, json=payload, timeout=self.timeout
@@ -203,6 +204,7 @@ class OpenRouterTool(LLMTool):
             except Exception as e:
                 print(f"Strange exception in VLM call: {e}")
                 print("Retry anyway! (with some delay)")
+                print(choices)
                 time.sleep(5)   # In case this helps I guess
                 continue
         raise RuntimeError(f"VLM Request failed after {self.retries} retries")
