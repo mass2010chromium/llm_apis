@@ -27,12 +27,12 @@ def json_output(f):
     return wrapper
 
 class LLMTool:
-    def __init__(self, function, system_prompt=None, system_prompt_role='system'):
+    def __init__(self, function, system_prompt=None, system_prompt_role='system', schema=None):
         # To define the system prompt, attach it to the function as function.system_prompt
-        if system_prompt:
-            self.system_prompt = system_prompt
-        else:
+        if system_prompt is None and hasattr(function, 'system_prompt'):
             self.system_prompt = function.system_prompt
+        else:
+            self.system_prompt = system_prompt
         # TODO: should this also be attached?
         self.system_prompt_role = system_prompt_role
         # The function should take one additional argument as the first position argument.
@@ -55,6 +55,12 @@ class LLMTool:
         # Second time, the actual output.
         self.function = function
 
+        if schema is None and hasattr(function, 'schema'):
+            self.schema = function.schema
+        else:
+            self.schema = schema
+
+
     @staticmethod
     def make_factory(tool_class, *args, **kwargs):
         def _factory(function, **override_kwargs):
@@ -75,13 +81,16 @@ class LLMTool:
         llm_response = {}
         interactive_handle = self.function(llm_response, *args, **kwargs)
 
-        messages = [self.get_system_prompt_message()] + next(interactive_handle)
-        response = self.make_query(messages)
+        if self.system_prompt is None:
+            messages = next(interactive_handle)
+        else:
+            messages = [self.get_system_prompt_message()] + next(interactive_handle)
+        response = self.make_query(messages, schema=self.schema)
         self.raw_response = response
         llm_response['content'] = response
         return next(interactive_handle)
 
-    def make_query(self, messages):
+    def make_query(self, messages, **kwargs):
         raise NotImplementedError("make_query should be specialized per llm provider")
 
 
@@ -91,14 +100,15 @@ class OllamaTool(LLMTool):
     def __init__(self, function, client, model,
                  system_prompt=None,
                  system_prompt_role='system',
+                 schema=None,
                  **kwargs):
-        super().__init__(function, system_prompt, system_prompt_role)
+        super().__init__(function, system_prompt, system_prompt_role, schema)
         # TODO: pass other kwargs
         self.client = client
         self.model = model
         self.kwargs = kwargs
 
-    def make_query(self, messages):
+    def make_query(self, messages, **kwargs):
         ollama_messages = []
         for turn in messages:
             texts = []
@@ -122,14 +132,15 @@ class TransformersTool(LLMTool):
     def __init__(self, function, model, processor,
                  system_prompt=None,
                  system_prompt_role='system',
+                 schema=None,
                  max_new_tokens=16384):
-        super().__init__(function, system_prompt, system_prompt_role)
+        super().__init__(function, system_prompt, system_prompt_role, schema=None)
         # TODO: pass other kwargs
         self.model = model
         self.processor = processor
         self.max_new_tokens = max_new_tokens
 
-    def make_query(self, messages):
+    def make_query(self, messages, **kwargs):
         llm_msg, _, _, _, _  = transformers_api.generate_output(self.model, self.processor, messages, max_new_tokens=self.max_new_tokens)
         done_thinking_tag = re.search('</think>', llm_msg, re.DOTALL)
         if done_thinking_tag:
@@ -146,17 +157,18 @@ class OpenRouterTool(LLMTool):
     def __init__(self, function, model, api_key,
                  system_prompt=None,
                  system_prompt_role='system',
+                 schema=None,
                  temperature: float = 0.2,
                  timeout: int = 60,
                  retries: int = 3):
-        super().__init__(function, system_prompt, system_prompt_role)
+        super().__init__(function, system_prompt, system_prompt_role, schema)
         self.model = model
         self.api_key = api_key
         self.temperature = temperature
         self.timeout = timeout
         self.retries = retries
 
-    def make_query(self, messages):
+    def make_query(self, messages, **kwargs):
         for turn in messages:
             for message in turn['content']:
                 if message['type'] == 'image':
